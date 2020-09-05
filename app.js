@@ -24,6 +24,10 @@ var ShortUrls = mongoose.model('ShortUrls', shortUrlSchema);
 
 var shortUrlCounter = 4
 
+var passport = require('passport');
+var authenticate = require('./authenticate');
+var userRouter = require('./routes/user')
+
 app.use(cookieParser('12345-67890-09876-54321'));
 
 app.use(session({
@@ -34,27 +38,24 @@ app.use(session({
   store: new FileStore()
 }));
 
-var userRouter = require('./routes/user')
+
+app.use(passport.initialize());
+app.use(passport.session());
+
 app.use('/user', userRouter)
+  
 
 function auth (req, res, next) {
-    console.log(req.session);
+    console.log(req.user);
 
-  if(!req.session.user) {
+    if (!req.user) {
       var err = new Error('You are not authenticated!');
       err.status = 403;
-      return next(err);
-  }
-  else {
-    if (req.session.user === 'authenticated') {
-      next();
+      next(err);
     }
     else {
-      var err = new Error('You are not authenticated!');
-      err.status = 403;
-      return next(err);
+          next();
     }
-  }
 }
 app.use(auth)
 
