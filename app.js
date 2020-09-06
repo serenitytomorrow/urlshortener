@@ -22,75 +22,36 @@ const shortUrlSchema = new Schema({
 
 var ShortUrls = mongoose.model('ShortUrls', shortUrlSchema);
 
-var shortUrlCounter = 4
+var shortUrlCounter = 7
 
 var passport = require('passport');
 var authenticate = require('./authenticate');
 var userRouter = require('./routes/user')
 
 app.use(cookieParser('12345-67890-09876-54321'));
-
-app.use(session({
-  name: 'session-id',
-  secret: '12345-67890-09876-54321',
-  saveUninitialized: false,
-  resave: false,
-  store: new FileStore()
-}));
-
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({extended: false}));
 
 app.use(passport.initialize());
-app.use(passport.session());
 
 app.use('/user', userRouter)
-  
 
-function auth (req, res, next) {
-    console.log(req.user);
-
-    if (!req.user) {
-      var err = new Error('You are not authenticated!');
-      err.status = 403;
-      next(err);
-    }
-    else {
-          next();
-    }
-}
-app.use(auth)
-
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'jade');
-
-app.use(logger('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
-
-const url = 'mongodb://localhost:27017/UrlShortener';
-
-mongoose.connect(url, {useNewUrlParser: true})
-.then(()=>console.log("Connected correctly to server"))
-.catch(error => handleError(error))
-mongoose.connection.on('error', err => {
-  console.eror(err);
-});
-
-
-app.get('/deleteall', (req, res, next) => {
+app.get('/deleteall', authenticate.verifyUser, (req, res, next) => {
     ShortUrls.deleteMany({}, function (err) {
       if (err) console.error(err); else console.log("deleted all");
   })
   res.send("deleted all")
 })
 
-app.get('/', (req, res, next) => {
+app.get('/', authenticate.verifyUser, (req, res, next) => {
   console.log("app.get /: ")
+  var token = authenticate.getToken({_id: req.user._id});
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/json');
   res.send("homepage be here")
 })
 
-app.post('/api/postlongurl',  (req, res, next) => {
+app.post('/api/postlongurl', authenticate.verifyUser, (req, res, next) => {
   ShortUrls.create({longUrl: req.body.longUrl, shortUrl: shortUrlCounter++}, (err, shortUrl) => {
       if (err) console.error(err);
       else {
@@ -100,7 +61,7 @@ app.post('/api/postlongurl',  (req, res, next) => {
   })
 });
 
-app.get('/api/getlongurl/:shortUrl', (req, res, next) => {
+app.get('/api/getlongurl/:shortUrl', authenticate.verifyUser, (req, res, next) => {
     ShortUrls.find({shortUrl: req.params.shortUrl}, (err, data)=>{
       if (err) console.error(err);
       else {
@@ -109,6 +70,31 @@ app.get('/api/getlongurl/:shortUrl', (req, res, next) => {
       }
     })
 })
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'jade');
+
+app.use(logger('dev'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
+
+
+var config = require('./config');
+const url = config.mongoUrl;
+
+mongoose.connect(url, {useNewUrlParser: true})
+.then(()=>console.log("Connected correctly to server"))
+.catch(error => handleError(error))
+mongoose.connection.on('error', err => {
+  console.error(err);
+});
+
+
+
 
 
 const PORT = 8080;
