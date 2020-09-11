@@ -17,7 +17,11 @@ require('mongoose-currency').loadType(mongoose);
 
 const shortUrlSchema = new Schema({
   longUrl: String,
-  shortUrl: {type: String, unique: true}
+  shortUrl: {type: String, unique: true},
+  author: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+  }
 })
 
 var ShortUrls = mongoose.model('ShortUrls', shortUrlSchema);
@@ -36,11 +40,27 @@ app.use(passport.initialize());
 
 app.use('/user', userRouter)
 
+// Secure traffic only
+app.all('*', (req, res, next) => {
+  if (req.secure) {
+    return next();
+  }
+  else {
+    res.redirect(307, 'https://' + req.hostname + ':' + app.get('secPort') + req.url);
+  }
+});
+
+
 app.get('/deleteall', authenticate.verifyUser, (req, res, next) => {
     ShortUrls.deleteMany({}, function (err) {
       if (err) console.error(err); else console.log("deleted all");
   })
   res.send("deleted all")
+})
+
+app.get('/displayalluserlinks', authenticate.verifyUser, (req, res, next) => {
+    ShortUrls.find({})
+    .populate()
 })
 
 app.get('/', authenticate.verifyUser, (req, res, next) => {
@@ -52,21 +72,28 @@ app.get('/', authenticate.verifyUser, (req, res, next) => {
 })
 
 app.post('/api/postlongurl', authenticate.verifyUser, (req, res, next) => {
-  ShortUrls.create({longUrl: req.body.longUrl, shortUrl: shortUrlCounter++}, (err, shortUrl) => {
-      if (err) console.error(err);
-      else {
-          // No error, so we respond with the saved data,
-          res.send(shortUrl);
-      }
-  })
+  ShortUrls.create({longUrl: req.body.longUrl, shortUrl: shortUrlCounter++, author: req.user._id})
+  .then((shortUrl) => {
+    ShortUrls.findById(shortUrl._id)
+    .populate('author')
+    .then((shortUrl) => {
+                    res.statusCode = 200;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.json(shortUrl);
+                }, (err) => next(err))
+      }, (err) => next(err))
 });
 
 app.get('/api/getlongurl/:shortUrl', authenticate.verifyUser, (req, res, next) => {
     ShortUrls.find({shortUrl: req.params.shortUrl}, (err, data)=>{
-      if (err) console.error(err);
+      if (err || !data) {console.error(err); res.send("error")}
       else {
-        console.log("long url: " + data[0].longUrl)
-        res.send(data[0].longUrl)
+        console.log(req.user._id + ' vs. ' + data.author)
+        if (req.user._id === data.author)
+          res.send(data[0].longUrl)
+        else {
+          res.send("not belonging to this user")
+        }
       }
     })
 })
@@ -94,10 +121,29 @@ mongoose.connection.on('error', err => {
 });
 
 
-
-
-
 const PORT = 8080;
+
+var https = require('https');
+var fs = require('fs');
+
+app.set('secPort',PORT+443);
+/**
+ * Create HTTPS server.
+ */
+var options = {
+  key: fs.readFileSync(__dirname+'/bin/private.key'),
+  cert: fs.readFileSync(__dirname+'/bin/certificate.pem')
+};
+var secureServer = https.createServer(options,app);
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+secureServer.listen(app.get('secPort'), () => {
+   console.log('Server listening on port ',app.get('secPort'));
+});
+secureServer.on('error', (onError)=>console.error(onError));
+secureServer.on('listening', (onListening)=>console.log(onListening));
+
 
 app.listen(PORT)
   .on('listening', () => {
