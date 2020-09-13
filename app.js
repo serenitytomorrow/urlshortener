@@ -50,6 +50,8 @@ app.all('*', (req, res, next) => {
   }
 });
 
+const uploadRouter = require('./routes/upload');
+app.use('/imageUpload',uploadRouter);
 
 app.get('/deleteall', authenticate.verifyUser, (req, res, next) => {
     ShortUrls.deleteMany({}, function (err) {
